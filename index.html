@@ -1,0 +1,179 @@
+<html>
+  <head>
+    <meta charset="utf-8">
+    <style>
+      canvas { border: 1px solid #000; }
+    </style>
+  </head>
+  <body>
+    <canvas id="canvas" height="500" width="500"></canvas>
+    <input type="text" id="block-size" value="10" />
+    <input type="button" id="next-gen" value="Cycle" />
+  </body>
+  <script src="https://ajax.googleapis.com/ajax/libs/jquery/2.1.3/jquery.min.js"></script>
+  <script type="text/javascript">
+    function getKey(col, row) {
+      return col.toString().concat('-', row.toString());
+    }
+
+    // Create cell object
+    var Cell = function(col, row, size, numCols, numRows) {
+      this.col  = col;
+      this.row  = row;
+      this.size = size;
+      this.isCurrentlyAlive = ((col + row) % 2 == 0) * 1; // store as 1/0 for calculations involving neighbors
+      this.willBeAlive = 0; // Save this for the next round
+
+      // col/row refer to array indices.
+      // multiply by block size to get proper x/y coordinates
+      this.x = col * this.size;
+      this.y = row * this.size;
+      this.neighborKeys = this.getNeighborKeys(numCols, numRows);
+    };
+
+    Cell.prototype.paint = function(ctx) {
+      ctx.fillStyle = this.isCurrentlyAlive ? "#888" : "#fff";
+      ctx.fillRect(this.x, this.y, this.size, this.size);
+    };
+
+    Cell.prototype.getNeighborKeys = function(numCols, numRows) {
+      /*
+        If we assume "C" to be the current Cell,
+        neighbors are denoted by the X locations:
+
+        X X X
+        X C X
+        X X X
+       */
+        var neighborKeys = [];
+
+        var addNeighborKey = function(col, row) {
+          neighborKeys.push(getKey(col, row));
+        };
+
+        var isTRow = this.row == 0;           // ? Is Top Row
+        var isBRow = this.row == numRows - 1; // ? Is Bottom Row
+        var isLCol = this.col == 0;           // ? Is Leftmost Column
+        var isRCol = this.col == numCols - 1; // ? Is Rightmost Column
+
+        // Neighbor Indices
+        var cc = this.col;     // current column
+        var lc = this.col - 1; // left column
+        var rc = this.col + 1; // right column
+        var cr = this.row;     // current row
+        var tr = this.row - 1; // top row
+        var br = this.row + 1; // bottom row
+
+        if (!isLCol) {
+          addNeighborKey(lc, cr);
+          if (!isTRow) { addNeighborKey(lc, tr); }
+          if (!isBRow) { addNeighborKey(lc, br); }
+        }
+
+        if (!isRCol) {
+          addNeighborKey(rc, cr);
+          if (!isTRow) { addNeighborKey(rc, tr); }
+          if (!isBRow) { addNeighborKey(rc, br); }
+        }
+
+        if (!isTRow) { addNeighborKey(cc, tr); }
+        if (!isBRow) { addNeighborKey(cc, br); }
+
+        return neighborKeys;
+    }
+
+    // GAH I'm so happy with how this method came out
+    Cell.prototype.determineFutureState = function(grid) {
+      // Determine what the future of the board looks like.
+      // Rules based on what I read in Wikipedia, namely:
+      // Live cell with <2 live neighbors dies
+      // Live cell with 2 or 3 live neighbors stays alive
+      // Live cells with > 3 live neighbors dies
+      // Dead cell with 3 live neighbors comes to life
+      // var liveNeighborCount = 0;
+
+      // How long did this take to run?
+      // don't forget - "key" is a reserved word
+      //for (var i=0; i < this.neighborKeys.length; i++) {
+      //  var k = this.neighborKeys[i]
+      //  liveNeighborCount += g.cells[k].isCurrentlyAlive;
+      //}
+
+      var liveNeighborCount = this.neighborKeys.map(function(key) {
+        return grid.cells[key].isCurrentlyAlive;
+      }).reduce(function(a, b) {
+        return a + b;
+      });
+
+      this.willBeAlive = liveNeighborCount === 3 || (this.isCurrentlyAlive && liveNeighborCount === 2);
+      this.willBeAlive *= 1; // cast from boolean to integer
+    }
+
+    Cell.prototype.flipState = function() {
+      this.isCurrentlyAlive = this.willBeAlive;
+      this.willBeAlive = 0;
+    }
+
+    Cell.prototype.paintFutureState = function(ctx) {
+      this.flipState();
+      this.paint(ctx);
+    }
+
+    var Grid = function(blockSize) {
+      var c = document.getElementById('canvas');
+      this.ctx = c.getContext('2d');
+      this.numCols = c.width / blockSize;
+      this.numRows = c.height / blockSize;
+
+      this.cells = [];
+      for (var col = 0; col < this.numCols; col++) {
+        for (var row = 0; row < this.numRows; row++) {
+          var key = getKey(col, row);
+
+          this.cells[key] = new Cell(col, row, blockSize, this.numCols, this.numRows);
+        }
+      }
+
+      this.paint();
+    }
+
+    Grid.prototype.paint = function() {
+      for (var key in this.cells) {
+        this.cells[key].paint(this.ctx);
+      }
+    }
+
+    Grid.prototype.getFutureState = function() {
+      for (var key in this.cells) {
+        this.cells[key].determineFutureState(this);
+      }
+
+      for (var key in this.cells) {
+        this.cells[key].paintFutureState(this.ctx);
+      }
+    }
+
+    var getValidBlockSize = function(value) {
+      if (value == "" || value <= 0) {
+        value = 10;
+      }
+
+      return value;
+    }
+
+    var g = new Grid(getValidBlockSize($('#block-size').val()));
+
+    $('#block-size').on('change', function(e) {
+      e.preventDefault();
+      var blockSize = getValidBlockSize($(this).val());
+
+      var g = new Grid(blockSize);
+    });
+
+    $('#next-gen').on('click', function(e) {
+      e.preventDefault();
+      g.getFutureState();
+    });
+
+  </script>
+</html>
